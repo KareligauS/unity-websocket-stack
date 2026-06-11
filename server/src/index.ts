@@ -1,5 +1,5 @@
 import { createServer } from "http";
-import WebSocket from "ws";
+import WebSocket, { WebSocketServer, RawData } from "ws";
 import express from "express";
 import cors from "cors";
 
@@ -12,7 +12,7 @@ app.use(express.json());
 const httpServer = createServer(app);
 
 // WebSocket piggybacks on the same HTTP server (required for single-port hosts like Render)
-const wss = new WebSocket.Server({
+const wss = new WebSocketServer({
   server: httpServer,
   perMessageDeflate: false,
 });
@@ -24,11 +24,11 @@ interface WebSocketEvent {
 
 let connectedClients = 0;
 
-wss.on("connection", (ws) => {
+wss.on("connection", (ws: WebSocket) => {
   connectedClients++;
   console.log(`Client connected. Total clients: ${connectedClients}`);
 
-  ws.on("message", (data) => {
+  ws.on("message", (data: RawData) => {
     try {
       const message: WebSocketEvent = JSON.parse(data.toString());
 
@@ -36,7 +36,7 @@ wss.on("connection", (ws) => {
         console.log(`Received event: ${message.event}`);
 
         // Broadcast to all connected clients
-        wss.clients.forEach((client) => {
+        wss.clients.forEach((client: WebSocket) => {
           if (client.readyState === WebSocket.OPEN) {
             client.send(JSON.stringify(message));
           }
@@ -52,7 +52,7 @@ wss.on("connection", (ws) => {
     console.log(`Client disconnected. Total clients: ${connectedClients}`);
   });
 
-  ws.on("error", (error) => {
+  ws.on("error", (error: Error) => {
     console.error("WebSocket error:", error);
   });
 
