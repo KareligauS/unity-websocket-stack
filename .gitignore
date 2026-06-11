@@ -1,0 +1,43 @@
+# Root gitignore
+
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Next.js
+.next/
+out/
+build/
+
+# Server
+dist/
+.env
+.env.local
+
+# Unity
+Library/
+Logs/
+Temp/
+obj/
+*.csproj
+*.sln
+UserSettings/
+.vs/
+.vscode/
+*.suo
+*.user
+
+# IDE
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# OS
+Thumbs.db
+
+# Misc
+*.log
+.cache/

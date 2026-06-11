@@ -1,0 +1,9 @@
+{
+  "name": "unity-websocket-client",
+  "version": "0.1.0",
+  "private": true,
+  "description": "WebSocket client library for Unity",
+  "author": "",
+  "unity": "2022.3",
+  "unityRelease": "0f1"
+}
