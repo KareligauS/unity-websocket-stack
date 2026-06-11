@@ -12,6 +12,11 @@ export default function Home() {
   useEffect(() => {
     const wsClient = new WebSocketClient();
 
+    wsClient.onClose(() => {
+      setConnected(false);
+      setMessages((prev) => [...prev, "Disconnected from server"]);
+    });
+
     wsClient
       .connect()
       .then(() => {
@@ -40,6 +45,8 @@ export default function Home() {
     if (client?.isConnected()) {
       client.send(eventId);
       setMessages((prev) => [...prev, `Event ${eventId} sent`]);
+    } else {
+      setMessages((prev) => [...prev, `Event ${eventId} not sent — not connected`]);
     }
   };
 

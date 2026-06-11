@@ -20,9 +20,14 @@ export class WebSocketClient {
   private ws: WebSocket | null = null;
   private url: string;
   private listeners: Map<number, Set<(data: WebSocketEvent) => void>> = new Map();
+  private closeCallback: (() => void) | null = null;
 
   constructor(url?: string) {
     this.url = url || getWebSocketUrl();
+  }
+
+  onClose(callback: () => void): void {
+    this.closeCallback = callback;
   }
 
   connect(): Promise<void> {
@@ -56,6 +61,7 @@ export class WebSocketClient {
 
         this.ws.onclose = () => {
           console.log("WebSocket disconnected");
+          this.closeCallback?.();
         };
       } catch (error) {
         reject(error);
