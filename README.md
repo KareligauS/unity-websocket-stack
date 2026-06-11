@@ -34,10 +34,18 @@ Simple JSON-based event protocol:
 
 ### 1. Server (Node.js)
 
+**Development:**
 ```bash
 cd server
 npm install
 npm run dev
+```
+
+**Production:**
+```bash
+cd server
+npm install --production
+npm start
 ```
 
 Server runs on:
@@ -87,10 +95,30 @@ wsClient.Send(1);
 
 ---
 
-## Development
+---
 
-- **Server**: TypeScript → JavaScript (via tsx for dev)
-- **Frontend**: TypeScript + React + Next.js
-- **Client**: C# (Unity)
+## Deployment
 
-All three communicate via the same WebSocket protocol.
+### Vercel (Frontend)
+
+1. Connect your GitHub repo to Vercel
+2. Set environment variable in Vercel dashboard:
+   ```
+   NEXT_PUBLIC_WS_URL=wss://your-server-url.onrender.com
+   ```
+3. Deploy automatically on push to main
+
+### Render (Backend)
+
+1. Create new Web Service from GitHub
+2. Set root directory: `server`
+3. Build command: `npm run build`
+4. Start command: `npm start`
+5. Add environment variables:
+   ```
+   PORT=10000
+   WS_PORT=10001
+   ```
+6. Deploy
+
+**Note:** WebSocket connections may require specific port configuration on your hosting provider.

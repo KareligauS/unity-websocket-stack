@@ -4,13 +4,25 @@ export interface WebSocketEvent {
   event: number;
 }
 
+const getWebSocketUrl = (): string => {
+  if (typeof window === "undefined") return "";
+
+  const wsUrl = process.env.NEXT_PUBLIC_WS_URL;
+  if (wsUrl) return wsUrl;
+
+  // Fallback: use same host as frontend, with ws/wss protocol
+  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  const host = window.location.host;
+  return `${protocol}//${host}`;
+};
+
 export class WebSocketClient {
   private ws: WebSocket | null = null;
   private url: string;
   private listeners: Map<number, Set<(data: WebSocketEvent) => void>> = new Map();
 
-  constructor(url: string) {
-    this.url = url;
+  constructor(url?: string) {
+    this.url = url || getWebSocketUrl();
   }
 
   connect(): Promise<void> {

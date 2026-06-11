@@ -9,8 +9,11 @@ const WS_PORT = process.env.WS_PORT || 8081;
 app.use(cors());
 app.use(express.json());
 
-// WebSocket Server
-const wss = new WebSocket.Server({ port: WS_PORT });
+// WebSocket Server with CORS support
+const wss = new WebSocket.Server({
+  port: WS_PORT,
+  perMessageDeflate: false,
+});
 
 interface WebSocketEvent {
   type: "event";

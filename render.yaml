@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: unity-websocket-server
+    runtime: node
+    buildCommand: cd server && npm install && npm run build
+    startCommand: cd server && npm start
+    envVars:
+      - key: PORT
+        value: "10000"
+      - key: WS_PORT
+        value: "10001"
