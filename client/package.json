@@ -1,9 +1,25 @@
 {
-  "name": "unity-websocket-client",
+  "name": "com.kareligaus.unity-websocket-client",
   "version": "0.1.0",
-  "private": true,
-  "description": "WebSocket client library for Unity",
-  "author": "",
-  "unity": "2022.3",
-  "unityRelease": "0f1"
+  "displayName": "Unity WebSocket Client",
+  "description": "Lightweight WebSocket client for Unity remote web operations. Zero external dependencies.",
+  "unity": "2021.3",
+  "author": {
+    "name": "KareligauS"
+  },
+  "keywords": [
+    "websocket",
+    "networking",
+    "remote",
+    "realtime"
+  ],
+  "category": "Network",
+  "dependencies": {},
+  "samples": [
+    {
+      "displayName": "Basic Example",
+      "description": "Demonstrates connecting to the server, sending events, and receiving events.",
+      "path": "Samples~/Basic"
+    }
+  ]
 }

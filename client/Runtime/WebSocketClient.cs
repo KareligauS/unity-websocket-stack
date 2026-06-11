@@ -1,127 +1,145 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Net.WebSockets;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 using UnityEngine;
-using WebSocketSharp;
-using Newtonsoft.Json;
 
-[System.Serializable]
-public class WebSocketEvent
+namespace UnityWebSocketStack
 {
-    public string type;
-    public int @event;
-}
-
-public class WebSocketClient : MonoBehaviour
-{
-    private WebSocket ws;
-    private string url = "ws://localhost:8081";
-    private bool isConnected = false;
-    private Queue<WebSocketEvent> messageQueue = new Queue<WebSocketEvent>();
-    private Dictionary<int, List<System.Action<WebSocketEvent>>> listeners =
-        new Dictionary<int, List<System.Action<WebSocketEvent>>>();
-
-    public bool IsConnected => isConnected;
-
-    public void Connect(string serverUrl = null)
+    [Serializable]
+    internal class WsMessage
     {
-        if (serverUrl != null)
-            url = serverUrl;
-
-        try
-        {
-            ws = new WebSocket(url);
-
-            ws.OnOpen += () =>
-            {
-                isConnected = true;
-                Debug.Log("WebSocket connected");
-            };
-
-            ws.OnMessage += (sender, e) =>
-            {
-                try
-                {
-                    WebSocketEvent data = JsonConvert.DeserializeObject<WebSocketEvent>(e.Data);
-                    if (data != null && data.type == "event")
-                    {
-                        messageQueue.Enqueue(data);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Debug.LogError($"Failed to parse message: {ex.Message}");
-                }
-            };
-
-            ws.OnError += (sender, e) =>
-            {
-                Debug.LogError($"WebSocket error: {e.Message}");
-            };
-
-            ws.OnClose += (sender, e) =>
-            {
-                isConnected = false;
-                Debug.Log("WebSocket disconnected");
-            };
-
-            ws.Connect();
-        }
-        catch (Exception ex)
-        {
-            Debug.LogError($"Failed to connect: {ex.Message}");
-        }
+        public string type;
+        public int @event;
     }
 
-    public void Disconnect()
+    public class WebSocketClient : MonoBehaviour
     {
-        if (ws != null)
-        {
-            ws.Close();
-            isConnected = false;
-        }
-    }
+        [SerializeField] private string serverUrl = "ws://localhost:8080";
 
-    public void Send(int eventId)
-    {
-        if (isConnected && ws != null)
+        private ClientWebSocket _ws;
+        private CancellationTokenSource _cts;
+        private readonly ConcurrentQueue<WsMessage> _queue = new ConcurrentQueue<WsMessage>();
+        private readonly Dictionary<int, List<Action<int>>> _listeners = new Dictionary<int, List<Action<int>>>();
+
+        public bool IsConnected => _ws?.State == WebSocketState.Open;
+
+        public async Task ConnectAsync(string url = null)
         {
-            WebSocketEvent message = new WebSocketEvent
+            if (url != null) serverUrl = url;
+
+            _cts?.Cancel();
+            _cts?.Dispose();
+            _cts = new CancellationTokenSource();
+
+            _ws?.Dispose();
+            _ws = new ClientWebSocket();
+
+            try
             {
-                type = "event",
-                @event = eventId
-            };
-            string json = JsonConvert.SerializeObject(message);
-            ws.Send(json);
-        }
-    }
-
-    public void On(int eventId, System.Action<WebSocketEvent> callback)
-    {
-        if (!listeners.ContainsKey(eventId))
-        {
-            listeners[eventId] = new List<System.Action<WebSocketEvent>>();
-        }
-        listeners[eventId].Add(callback);
-    }
-
-    private void Update()
-    {
-        while (messageQueue.Count > 0)
-        {
-            WebSocketEvent @event = messageQueue.Dequeue();
-
-            if (listeners.ContainsKey(@event.@event))
+                await _ws.ConnectAsync(new Uri(serverUrl), _cts.Token);
+                Debug.Log($"[WebSocketClient] Connected to {serverUrl}");
+                _ = ReceiveLoopAsync(_cts.Token);
+            }
+            catch (Exception e)
             {
-                foreach (var callback in listeners[@event.@event])
-                {
-                    callback?.Invoke(@event);
-                }
+                Debug.LogError($"[WebSocketClient] Connect failed: {e.Message}");
             }
         }
-    }
 
-    private void OnDestroy()
-    {
-        Disconnect();
+        public void Send(int eventId)
+        {
+            if (!IsConnected) return;
+            var msg = new WsMessage { type = "event", @event = eventId };
+            _ = SendAsync(JsonUtility.ToJson(msg));
+        }
+
+        // Returns an unsubscribe action
+        public Action On(int eventId, Action<int> callback)
+        {
+            if (!_listeners.ContainsKey(eventId))
+                _listeners[eventId] = new List<Action<int>>();
+            _listeners[eventId].Add(callback);
+            return () =>
+            {
+                if (_listeners.TryGetValue(eventId, out var list))
+                    list.Remove(callback);
+            };
+        }
+
+        public void Disconnect()
+        {
+            _cts?.Cancel();
+            _ws?.Abort();
+            _ws?.Dispose();
+            _ws = null;
+        }
+
+        private void Update()
+        {
+            while (_queue.TryDequeue(out var msg))
+            {
+                if (_listeners.TryGetValue(msg.@event, out var callbacks))
+                    foreach (var cb in callbacks)
+                        cb?.Invoke(msg.@event);
+            }
+        }
+
+        private void OnDestroy() => Disconnect();
+
+        private async Task ReceiveLoopAsync(CancellationToken ct)
+        {
+            var buffer = new byte[4096];
+            var sb = new StringBuilder();
+
+            try
+            {
+                while (_ws.State == WebSocketState.Open && !ct.IsCancellationRequested)
+                {
+                    sb.Clear();
+                    WebSocketReceiveResult result;
+                    do
+                    {
+                        result = await _ws.ReceiveAsync(new ArraySegment<byte>(buffer), ct);
+                        if (result.MessageType == WebSocketMessageType.Close) return;
+                        sb.Append(Encoding.UTF8.GetString(buffer, 0, result.Count));
+                    } while (!result.EndOfMessage);
+
+                    var msg = JsonUtility.FromJson<WsMessage>(sb.ToString());
+                    if (msg != null && msg.type == "event")
+                        _queue.Enqueue(msg);
+                }
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception e)
+            {
+                Debug.LogError($"[WebSocketClient] Receive error: {e.Message}");
+            }
+            finally
+            {
+                Debug.Log("[WebSocketClient] Disconnected");
+            }
+        }
+
+        private async Task SendAsync(string json)
+        {
+            try
+            {
+                var bytes = Encoding.UTF8.GetBytes(json);
+                await _ws.SendAsync(
+                    new ArraySegment<byte>(bytes),
+                    WebSocketMessageType.Text,
+                    endOfMessage: true,
+                    _cts?.Token ?? CancellationToken.None
+                );
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"[WebSocketClient] Send error: {e.Message}");
+            }
+        }
     }
 }
