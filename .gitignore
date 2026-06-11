@@ -33,6 +33,8 @@ UserSettings/
 *.swp
 *.swo
 *~
+!client/Samples~/
+!client/Samples~/**
 .DS_Store
 
 # OS

@@ -1,0 +1,16 @@
+{
+    "name": "UnityWebSocketStack.Samples.Basic",
+    "rootNamespace": "",
+    "references": [
+        "UnityWebSocketStack.Runtime"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
