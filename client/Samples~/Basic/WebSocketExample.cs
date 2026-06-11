@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityWebSocketStack;
+using System;
 
 public class WebSocketExample : MonoBehaviour
 {
