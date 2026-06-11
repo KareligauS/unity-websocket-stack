@@ -1,17 +1,19 @@
+import { createServer } from "http";
 import WebSocket from "ws";
 import express from "express";
 import cors from "cors";
 
 const app = express();
 const PORT = process.env.PORT || 8080;
-const WS_PORT = process.env.WS_PORT || 8081;
 
 app.use(cors());
 app.use(express.json());
 
-// WebSocket Server with CORS support
+const httpServer = createServer(app);
+
+// WebSocket piggybacks on the same HTTP server (required for single-port hosts like Render)
 const wss = new WebSocket.Server({
-  port: WS_PORT,
+  server: httpServer,
   perMessageDeflate: false,
 });
 
@@ -71,7 +73,6 @@ app.get("/stats", (req, res) => {
   });
 });
 
-app.listen(PORT, () => {
-  console.log(`HTTP Server running on http://localhost:${PORT}`);
-  console.log(`WebSocket Server running on ws://localhost:${WS_PORT}`);
+httpServer.listen(PORT, () => {
+  console.log(`Server running on port ${PORT} (HTTP + WebSocket)`);
 });

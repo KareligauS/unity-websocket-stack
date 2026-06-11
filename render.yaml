@@ -7,5 +7,3 @@ services:
     envVars:
       - key: PORT
         value: "10000"
-      - key: WS_PORT
-        value: "10001"
