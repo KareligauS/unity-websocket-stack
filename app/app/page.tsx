@@ -24,11 +24,14 @@ export default function Home() {
         setConnecting(false);
         setClient(wsClient);
 
-        const unsubscribe = wsClient.on(1, (data) => {
+        const unsub1 = wsClient.on(1, (data) => {
+          setMessages((prev) => [...prev, `Event ${data.event} received`]);
+        });
+        const unsub2 = wsClient.on(2, (data) => {
           setMessages((prev) => [...prev, `Event ${data.event} received`]);
         });
 
-        return unsubscribe;
+        return () => { unsub1(); unsub2(); };
       })
       .catch((error) => {
         console.error("Connection failed:", error);
