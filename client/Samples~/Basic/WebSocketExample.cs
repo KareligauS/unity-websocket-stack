@@ -6,14 +6,11 @@ using UnityWebSocketStack;
 public class WebSocketExample : MonoBehaviour
 {
     private WebSocketClient _wsClient;
-    private Action _unsubscribeEvent1;
 
     private async void Start()
     {
         _wsClient = gameObject.AddComponent<WebSocketClient>();
         await _wsClient.ConnectAsync("ws://localhost:8080");
-
-        _unsubscribeEvent1 = _wsClient.On(1, OnEvent1);
         _wsClient.On(2, OnEvent2);
         _wsClient.On(3, OnEvent3); // HuskyLens face count
     }
@@ -44,7 +41,6 @@ public class WebSocketExample : MonoBehaviour
 
     private void OnDestroy()
     {
-        _unsubscribeEvent1?.Invoke();
         _wsClient?.Disconnect();
     }
 }
