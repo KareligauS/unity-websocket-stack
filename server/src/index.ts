@@ -20,6 +20,7 @@ const wss = new WebSocketServer({
 interface WebSocketEvent {
   type: "event";
   event: number;
+  data?: Record<string, unknown>;
 }
 
 let connectedClients = 0;

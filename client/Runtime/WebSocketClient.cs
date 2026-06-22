@@ -5,15 +5,37 @@ using System.Net.WebSockets;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Newtonsoft.Json.Linq;
 using UnityEngine;
 
 namespace UnityWebSocketStack
 {
-    [Serializable]
-    internal class WsMessage
+    // Represents a received {"type":"event","event":N,"data":{...}} message.
+    public class WebSocketEvent
     {
-        public string type;
-        public int @event;
+        public int Id { get; }
+
+        // The "data" object from the message. Empty JObject if the field was absent.
+        public JObject Data { get; }
+
+        internal WebSocketEvent(int id, JObject raw)
+        {
+            Id = id;
+            Data = raw["data"] as JObject ?? new JObject();
+        }
+
+        // Type-safe read from data: e.Get<int>("faces"), e.Get<string>("label"), etc.
+        // Returns defaultValue when the key is absent or the cast fails.
+        public T Get<T>(string key, T defaultValue = default)
+        {
+            try { return Data.ContainsKey(key) ? Data[key].ToObject<T>() : defaultValue; }
+            catch { return defaultValue; }
+        }
+
+        public bool Has(string key) => Data.ContainsKey(key);
+
+        // Raw JToken access for nested structures: e["nested"]["child"]
+        public JToken this[string key] => Data[key];
     }
 
     public class WebSocketClient : MonoBehaviour
@@ -22,8 +44,8 @@ namespace UnityWebSocketStack
 
         private ClientWebSocket _ws;
         private CancellationTokenSource _cts;
-        private readonly ConcurrentQueue<WsMessage> _queue = new ConcurrentQueue<WsMessage>();
-        private readonly Dictionary<int, List<Action<int>>> _listeners = new Dictionary<int, List<Action<int>>>();
+        private readonly ConcurrentQueue<WebSocketEvent> _queue = new ConcurrentQueue<WebSocketEvent>();
+        private readonly Dictionary<int, List<Action<WebSocketEvent>>> _listeners = new Dictionary<int, List<Action<WebSocketEvent>>>();
 
         public bool IsConnected => _ws?.State == WebSocketState.Open;
 
@@ -50,18 +72,23 @@ namespace UnityWebSocketStack
             }
         }
 
-        public void Send(int eventId)
+        // Send {"type":"event","event":N}
+        public void Send(int eventId) => Send(eventId, null);
+
+        // Send {"type":"event","event":N,"data":{...}}
+        public void Send(int eventId, JObject data)
         {
             if (!IsConnected) return;
-            var msg = new WsMessage { type = "event", @event = eventId };
-            _ = SendAsync(JsonUtility.ToJson(msg));
+            var msg = new JObject { ["type"] = "event", ["event"] = eventId };
+            if (data != null) msg["data"] = data;
+            _ = SendAsync(msg.ToString(Newtonsoft.Json.Formatting.None));
         }
 
-        // Returns an unsubscribe action
-        public Action On(int eventId, Action<int> callback)
+        // Returns an unsubscribe action.
+        public Action On(int eventId, Action<WebSocketEvent> callback)
         {
             if (!_listeners.ContainsKey(eventId))
-                _listeners[eventId] = new List<Action<int>>();
+                _listeners[eventId] = new List<Action<WebSocketEvent>>();
             _listeners[eventId].Add(callback);
             return () =>
             {
@@ -80,11 +107,11 @@ namespace UnityWebSocketStack
 
         private void Update()
         {
-            while (_queue.TryDequeue(out var msg))
+            while (_queue.TryDequeue(out var evt))
             {
-                if (_listeners.TryGetValue(msg.@event, out var callbacks))
+                if (_listeners.TryGetValue(evt.Id, out var callbacks))
                     foreach (var cb in callbacks)
-                        cb?.Invoke(msg.@event);
+                        cb?.Invoke(evt);
             }
         }
 
@@ -108,9 +135,13 @@ namespace UnityWebSocketStack
                         sb.Append(Encoding.UTF8.GetString(buffer, 0, result.Count));
                     } while (!result.EndOfMessage);
 
-                    var msg = JsonUtility.FromJson<WsMessage>(sb.ToString());
-                    if (msg != null && msg.type == "event")
-                        _queue.Enqueue(msg);
+                    try
+                    {
+                        var obj = JObject.Parse(sb.ToString());
+                        if (obj["type"]?.Value<string>() == "event" && obj["event"] != null)
+                            _queue.Enqueue(new WebSocketEvent(obj["event"].Value<int>(), obj));
+                    }
+                    catch { /* malformed JSON — skip */ }
                 }
             }
             catch (OperationCanceledException) { }

@@ -6,57 +6,52 @@ A WebSocket platform for Unity remote web operations with a simple event-based p
 
 ```
 unity-websocket-stack/
-├── app/              # Next.js frontend application
-├── server/           # Node.js WebSocket server
+├── server/           # Node.js WebSocket + HTTP server
+├── app/              # Next.js frontend
 ├── client/           # Unity WebSocket client library
-└── README.md         # This file
+├── tcp-bridge/       # Python bridge: Arduino USB Serial → WebSocket server
+└── arduino/          # Arduino/ESP sketch
+    └── SerialBridgeClient/SerialBridgeClient.ino
 ```
 
 ## WebSocket Protocol
 
-Simple JSON-based event protocol:
+Simple JSON event messages:
 
 ```json
-{
-  "type": "event",
-  "event": <int>
-}
+{ "type": "event", "event": 0 }
 ```
 
-### Event Types
-
-- **0**: Connection confirmation (sent by server)
-- **1-N**: Custom events (user-defined)
+| Event | Meaning |
+|-------|---------|
+| `0`   | Connection confirmation (sent by server on connect) |
+| `1–N` | Custom events (user-defined) |
 
 ---
 
-## Getting Started
+## Modules
 
-### 1. Server (Node.js)
+### Server (Node.js)
 
-**Development:**
+WebSocket and HTTP on a single port.
+
 ```bash
 cd server
 npm install
-npm run dev
+npm run dev       # development (tsx, hot-reload)
+npm start         # production (compiles then runs)
 ```
 
-**Production:**
-```bash
-cd server
-npm install --production
-npm start
-```
+Runs on `http://localhost:8080` / `ws://localhost:8080`.
 
-Server runs on:
-- HTTP: `http://localhost:8080`
-- WebSocket: `ws://localhost:8081`
+| Endpoint | Description |
+|----------|-------------|
+| `GET /health` | Health check |
+| `GET /stats`  | Client count + timestamp |
 
-**Endpoints:**
-- `GET /health` - Server health check
-- `GET /stats` - Connected clients and timestamp
+---
 
-### 2. Frontend (Next.js)
+### Frontend (Next.js)
 
 ```bash
 cd app
@@ -64,61 +59,128 @@ npm install
 npm run dev
 ```
 
-Frontend runs on `http://localhost:3000`
+Runs on `http://localhost:3000`. Connect, send, and receive events in the browser.
 
-**Features:**
-- Connect to WebSocket server
-- Send and receive events
-- Real-time message display
+---
 
-### 3. Unity Client
+### Unity Client
 
-1. Install WebSocketSharp and Newtonsoft.Json via Unity Package Manager
-2. Add the `client/Runtime/WebSocketClient.cs` script to your project
-3. Attach `WebSocketClient` component to a GameObject
-4. Use the sample in `Samples~/WebSocketExample.cs` as reference
-
-**Usage:**
+1. Install **WebSocketSharp** and **Newtonsoft.Json** via Unity Package Manager.
+2. Copy `client/Runtime/WebSocketClient.cs` into your project.
+3. Attach `WebSocketClient` to a GameObject.
+4. See `client/Samples~/Basic/WebSocketExample.cs` for a full example.
 
 ```csharp
-WebSocketClient wsClient = GetComponent<WebSocketClient>();
-wsClient.Connect("ws://localhost:8081");
+WebSocketClient ws = GetComponent<WebSocketClient>();
+ws.Connect("ws://localhost:8080");
 
-// Listen to events
-wsClient.On(1, (event) => {
-    Debug.Log($"Received event: {event.@event}");
-});
-
-// Send events
-wsClient.Send(1);
+ws.On(1, e => Debug.Log($"Event received: {e.@event}"));
+ws.Send(2);
 ```
 
 ---
+
+### Serial Bridge (Python)
+
+Reads events from an Arduino over USB Serial and forwards them to the WebSocket server. Reconnects automatically if the serial port or WebSocket connection drops.
+
+```
+Arduino ──USB──► bridge.py ──WS──► WebSocket Server
+```
+
+**Setup:**
+
+```bash
+cd tcp-bridge
+pip install -r requirements.txt
+# Edit .env: set SERIAL_PORT and WS_URL
+python bridge.py
+```
+
+**Arduino message formats** (newline-terminated):
+
+| Arduino sends | Forwarded as |
+|---|---|
+| `1\n` | `{"type":"event","event":1}` |
+| `{"type":"event","event":2}\n` | forwarded as-is |
+
+**Configuration** (`.env`):
+
+| Variable | Default | Description |
+|---|---|---|
+| `SERIAL_PORT` | `/dev/ttyUSB0` | Serial port the Arduino is on |
+| `SERIAL_BAUD` | `115200` | Baud rate (must match the sketch) |
+| `WS_URL` | `ws://localhost:8080` | WebSocket server URL (`wss://` for TLS) |
+| `WS_RECONNECT_DELAY` | `3.0` | Seconds between WS reconnect attempts |
+| `SERIAL_RECONNECT_DELAY` | `3.0` | Seconds between serial reconnect attempts |
+| `LOG_LEVEL` | `INFO` | `DEBUG` / `INFO` / `WARNING` / `ERROR` |
+
+Common serial port names: `/dev/cu.usbmodem*` (macOS), `/dev/ttyUSB0` (Linux), `COM3` (Windows).
+
+---
+
+### Arduino Sketch (HuskyLens face detection)
+
+`arduino/SerialBridgeClient/SerialBridgeClient.ino` — polls a HuskyLens camera over I2C every 500 ms and sends the current face count over USB Serial whenever it changes.
+
+**Required library:** install **HUSKYLENS** by DFRobot via the Arduino Library Manager.
+
+**Wiring (I2C):**
+
+| HuskyLens | Arduino Uno | ESP32 | ESP8266 |
+|-----------|-------------|-------|---------|
+| SDA | A4 | D21 | D2 |
+| SCL | A5 | D22 | D1 |
+| VCC | 5 V | 3.3 V | 3.3 V |
+| GND | GND | GND | GND |
+
+**Setup:**
+
+1. Wire HuskyLens as above.
+2. Open `arduino/SerialBridgeClient/SerialBridgeClient.ino` in the Arduino IDE.
+3. Flash to your board.
+4. Set `SERIAL_PORT` in `tcp-bridge/.env` to the port the board appears on.
+
+**Message sent on face count change:**
+
+```json
+{ "type": "event", "event": 1, "faces": 3 }
+```
+
+The bridge passes JSON through unchanged, so Unity receives the full object including `faces`. On the Unity side, read it from `WebSocketEvent` (you may need to extend the model to include the `faces` field).
+
+---
+
+## Quick Start (Makefile)
+
+```bash
+make install      # install all dependencies
+make server-dev   # start WebSocket server (dev mode)
+make app-dev      # start Next.js frontend (dev mode)
+make bridge       # start TCP bridge
+```
+
+Run server and frontend together:
+
+```bash
+make dev
+```
+
+See all commands: `make help`
 
 ---
 
 ## Deployment
 
+### Render (Server)
+
+1. New Web Service → root directory: `server`
+2. Build command: `npm run build`
+3. Start command: `npm start`
+4. Env var: `PORT=10000`
+
 ### Vercel (Frontend)
 
-1. Connect your GitHub repo to Vercel
-2. Set environment variable in Vercel dashboard:
-   ```
-   NEXT_PUBLIC_WS_URL=wss://your-server-url.onrender.com
-   ```
-3. Deploy automatically on push to main
-
-### Render (Backend)
-
-1. Create new Web Service from GitHub
-2. Set root directory: `server`
-3. Build command: `npm run build`
-4. Start command: `npm start`
-5. Add environment variables:
-   ```
-   PORT=10000
-   WS_PORT=10001
-   ```
-6. Deploy
-
-**Note:** WebSocket connections may require specific port configuration on your hosting provider.
+1. Connect repo, set root directory: `app`
+2. Env var: `NEXT_PUBLIC_WS_URL=wss://your-server.onrender.com`
+3. Deploy on push to `main`

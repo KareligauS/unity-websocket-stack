@@ -1,6 +1,7 @@
+using Newtonsoft.Json.Linq;
+using System;
 using UnityEngine;
 using UnityWebSocketStack;
-using System;
 
 public class WebSocketExample : MonoBehaviour
 {
@@ -14,6 +15,7 @@ public class WebSocketExample : MonoBehaviour
 
         _unsubscribeEvent1 = _wsClient.On(1, OnEvent1);
         _wsClient.On(2, OnEvent2);
+        _wsClient.On(3, OnEvent3); // HuskyLens face count
     }
 
     private void Update()
@@ -23,18 +25,22 @@ public class WebSocketExample : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.Space))
         {
             _wsClient.Send(1);
-            Debug.Log("Sent event 1");
         }
 
         if (Input.GetKeyDown(KeyCode.E))
         {
-            _wsClient.Send(2);
-            Debug.Log("Sent event 2");
+            _wsClient.Send(2, new JObject { ["message"] = "hello" });
         }
     }
 
-    private void OnEvent1(int eventId) => Debug.Log($"Received event {eventId}");
-    private void OnEvent2(int eventId) => Debug.Log($"Received event {eventId}");
+    private void OnEvent1(WebSocketEvent e) =>
+        Debug.Log($"Event {e.Id}");
+
+    private void OnEvent2(WebSocketEvent e) =>
+        Debug.Log($"Event {e.Id} — message: {e.Get<string>("message")}");
+
+    private void OnEvent3(WebSocketEvent e) =>
+        Debug.Log($"Detected ({e.Get<string>("mode")}): {e.Get<int>("count")}");
 
     private void OnDestroy()
     {
