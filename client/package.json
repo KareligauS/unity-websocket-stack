@@ -2,7 +2,7 @@
   "name": "com.kareligaus.unity-websocket-client",
   "version": "0.1.0",
   "displayName": "Unity WebSocket Client",
-  "description": "Lightweight WebSocket client for Unity remote web operations. Zero external dependencies.",
+  "description": "Lightweight WebSocket client for Unity remote web operations.",
   "unity": "2021.3",
   "author": {
     "name": "KareligauS"
@@ -14,7 +14,9 @@
     "realtime"
   ],
   "category": "Network",
-  "dependencies": {},
+  "dependencies": {
+    "com.unity.nuget.newtonsoft-json": "3.2.1"
+  },
   "samples": [
     {
       "displayName": "Basic Example",

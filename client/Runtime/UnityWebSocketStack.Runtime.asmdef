@@ -1,7 +1,9 @@
 {
     "name": "UnityWebSocketStack.Runtime",
     "rootNamespace": "UnityWebSocketStack",
-    "references": [],
+    "references": [
+        "com.unity.nuget.newtonsoft-json"
+    ],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,
