@@ -21,6 +21,7 @@ interface CountLine {
 
 const TAB_MONITOR  = 0;
 const TAB_SETTINGS = 1;
+const TAB_SEND     = 2;
 
 export default function AdminPage() {
   const [authed, setAuthed] = useState(false);
@@ -227,6 +228,7 @@ export default function AdminPage() {
       <div style={{ display: "flex", borderBottom: "1px solid #d1d5db", marginBottom: "20px" }}>
         <button style={tabStyle(activeTab === TAB_MONITOR)}  onClick={() => setActiveTab(TAB_MONITOR)}>Monitor</button>
         <button style={tabStyle(activeTab === TAB_SETTINGS)} onClick={() => setActiveTab(TAB_SETTINGS)}>ESP Settings</button>
+        <button style={tabStyle(activeTab === TAB_SEND)}     onClick={() => setActiveTab(TAB_SEND)}>Send Event</button>
       </div>
 
       {/* ── Tab 1: Monitor ── */}
@@ -312,27 +314,6 @@ export default function AdminPage() {
             )}
           </div>
 
-          {/* Send controls */}
-          <div style={{ marginBottom: "20px", display: "flex", gap: "8px", alignItems: "center" }}>
-            <input
-              type="number"
-              min={0}
-              value={sendInput}
-              onChange={(e) => setSendInput(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") sendEvent(); }}
-              placeholder="Event ID"
-              disabled={!connected}
-              style={{
-                padding: "8px 12px",
-                border: "1px solid #d1d5db",
-                borderRadius: "6px",
-                fontSize: "14px",
-                width: "120px",
-              }}
-            />
-            <button onClick={sendEvent} disabled={!connected || sendInput === ""}>Send</button>
-          </div>
-
           {/* Event log — collapsible */}
           <div>
             {sectionHeader(
@@ -385,6 +366,32 @@ export default function AdminPage() {
             )}
           </div>
         </>
+      )}
+
+      {/* ── Tab 3: Send Event ── */}
+      {activeTab === TAB_SEND && (
+        <div style={{ padding: "16px", border: "1px solid #d1d5db", borderRadius: "8px", backgroundColor: "#f9fafb", maxWidth: "420px" }}>
+          <p style={{ margin: "0 0 16px 0", fontWeight: 600, fontSize: "14px" }}>Send Event</p>
+          <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+            <input
+              type="number"
+              min={0}
+              value={sendInput}
+              onChange={(e) => setSendInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") sendEvent(); }}
+              placeholder="Event ID"
+              disabled={!connected}
+              style={{
+                padding: "8px 12px",
+                border: "1px solid #d1d5db",
+                borderRadius: "6px",
+                fontSize: "14px",
+                width: "120px",
+              }}
+            />
+            <button onClick={sendEvent} disabled={!connected || sendInput === ""}>Send</button>
+          </div>
+        </div>
       )}
 
       {/* ── Tab 2: ESP Settings ── */}
