@@ -27,7 +27,7 @@
 struct WifiNetwork { const char* ssid; const char* password; };
 
 static const WifiNetwork WIFI_NETWORKS[] = {
-  { "kgserver2",   "holran344" },   // primary
+  { "Black Brick Bottom Floor Wifi",   "BBBFW31F" },   // primary
   { "kgserver2",  "holran344" },  // secondary — edit as needed
 };
 static const int          WIFI_NETWORK_COUNT      = sizeof(WIFI_NETWORKS) / sizeof(WIFI_NETWORKS[0]);
@@ -53,13 +53,13 @@ const uint8_t CAT_ID    = 3;  // HuskyLens ID of the trained "cat" class
 
 // ── Timing ────────────────────────────────────────────────────────────────────
 
-#define POLL_MS          50UL
-#define SEND_INTERVAL_MS 2000UL
-#define BUFFER_SIZE      (SEND_INTERVAL_MS / POLL_MS)  // number of slots
+#define MAX_BUFFER_SIZE  200   // absolute cap regardless of interval settings
 
 // ── Configuration ─────────────────────────────────────────────────────────────
 
-const int EVENT_DETECTION = 3;
+const int EVENT_DETECTION  = 3;
+const int EVENT_COUNT_LINE = 4;
+const int EVENT_SETTINGS   = 5;  // admin → ESP: {"send_interval":ms,"poll_ms":ms}
 
 // ── Globals ───────────────────────────────────────────────────────────────────
 
@@ -71,12 +71,28 @@ uint32_t         reportN        = 0;
 int              currentNetIdx  = 0;
 unsigned long    lastWifiCheck  = 0;
 
-uint8_t       countBuffer[BUFFER_SIZE];
+// Runtime-adjustable timing settings (updated via event 5)
+unsigned long pollMs         = 50UL;
+unsigned long sendIntervalMs = 500UL;
+
+uint8_t       countBuffer[MAX_BUFFER_SIZE];
 int           bufferLen  = 0;
 unsigned long lastPollAt = 0;
 unsigned long lastSendAt = 0;
 
 // ── WebSocket event handler ───────────────────────────────────────────────────
+
+// Extract an integer value for "key": N from a JSON string.
+static long jsonGetInt(const char* json, const char* key) {
+  char search[40];
+  snprintf(search, sizeof(search), "\"%s\"", key);
+  const char* p = strstr(json, search);
+  if (!p) return -1;
+  p = strchr(p + strlen(search), ':');
+  if (!p) return -1;
+  while (*p == ':' || *p == ' ') p++;
+  return atol(p);
+}
 
 void onWsEvent(WStype_t type, uint8_t* payload, size_t length) {
   switch (type) {
@@ -88,6 +104,24 @@ void onWsEvent(WStype_t type, uint8_t* payload, size_t length) {
       wsConnected = false;
       Serial.println("[WS] disconnected — will retry");
       break;
+    case WStype_TEXT: {
+      const char* json = (const char*)payload;
+      long evId = jsonGetInt(json, "event");
+      if (evId == EVENT_SETTINGS) {
+        long newSendInterval = jsonGetInt(json, "send_interval");
+        long newPollMs       = jsonGetInt(json, "poll_ms");
+        if (newSendInterval > 0) {
+          sendIntervalMs = (unsigned long)newSendInterval;
+          Serial.printf("[CFG] send_interval → %lu ms\n", sendIntervalMs);
+        }
+        if (newPollMs > 0) {
+          pollMs = (unsigned long)newPollMs;
+          Serial.printf("[CFG] poll_ms → %lu ms\n", pollMs);
+        }
+        bufferLen = 0;  // discard partial buffer after settings change
+      }
+      break;
+    }
     default:
       break;
   }
@@ -136,6 +170,35 @@ void printBuffer(const uint8_t* buf, int len, int dominant) {
     first = false;
   }
   Serial.println();
+}
+
+void sendCountLine(uint32_t n, int dominant, const uint8_t* buf, int len) {
+  uint8_t freq[16] = {};
+  for (int i = 0; i < len; i++) {
+    uint8_t v = buf[i] < 16 ? buf[i] : 15;
+    freq[v]++;
+  }
+
+  // Build distribution JSON array: [{"v":0,"f":3}, ...]
+  char dist[128];
+  int pos = 0;
+  pos += snprintf(dist + pos, sizeof(dist) - pos, "[");
+  bool first = true;
+  for (int i = 0; i < 16; i++) {
+    if (freq[i] == 0) continue;
+    if (!first) pos += snprintf(dist + pos, sizeof(dist) - pos, ",");
+    pos += snprintf(dist + pos, sizeof(dist) - pos, "{\"v\":%d,\"f\":%d}", i, freq[i]);
+    first = false;
+  }
+  snprintf(dist + pos, sizeof(dist) - pos, "]");
+
+  char buf2[256];
+  snprintf(buf2, sizeof(buf2),
+    "{\"type\":\"event\",\"event\":%d,\"data\":{\"n\":%u,\"dominant\":%d,\"dist\":%s}}",
+    EVENT_COUNT_LINE, n, dominant, dist);
+  if (wsConnected) {
+    ws.sendTXT(buf2);
+  }
 }
 
 void sendCount(int count) {
@@ -237,18 +300,21 @@ void loop() {
 
   ws.loop();
 
-  if (now - lastPollAt >= POLL_MS) {
+  if (now - lastPollAt >= pollMs) {
     lastPollAt = now;
-    if (bufferLen < BUFFER_SIZE) {
+    int bufCap = (int)(sendIntervalMs / pollMs);
+    if (bufCap > MAX_BUFFER_SIZE) bufCap = MAX_BUFFER_SIZE;
+    if (bufferLen < bufCap) {
       countBuffer[bufferLen++] = (uint8_t)readCount();
     }
   }
 
-  if (now - lastSendAt >= SEND_INTERVAL_MS && bufferLen > 0) {
+  if (now - lastSendAt >= sendIntervalMs && bufferLen > 0) {
     lastSendAt = now;
     reportN++;
     int dominant = mostFrequentNonZero(countBuffer, bufferLen);
     printBuffer(countBuffer, bufferLen, dominant);
+    sendCountLine(reportN, dominant, countBuffer, bufferLen);
     bufferLen = 0;
     if (dominant != lastCount) {
       sendCount(dominant);

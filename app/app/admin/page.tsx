@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { WebSocketClient } from "@/lib/WebSocketClient";
+import { WebSocketClient, WebSocketEvent } from "@/lib/WebSocketClient";
 
 type EventDirection = "sent" | "received";
 
@@ -10,6 +10,13 @@ interface LogEntry {
   eventId: number;
   direction: EventDirection;
   timestamp: Date;
+}
+
+interface CountLine {
+  n: number;
+  dominant: number;
+  dist: { v: number; f: number }[];
+  receivedAt: string;
 }
 
 export default function AdminPage() {
@@ -22,6 +29,9 @@ export default function AdminPage() {
   const [log, setLog] = useState<LogEntry[]>([]);
   const [client, setClient] = useState<WebSocketClient | null>(null);
   const [sendInput, setSendInput] = useState("");
+  const [espSendInterval, setEspSendInterval] = useState("500");
+  const [espPollMs, setEspPollMs] = useState("50");
+  const [countLines, setCountLines] = useState<CountLine[]>([]);
   const counterRef = useRef(0);
   const logRef = useRef<HTMLDivElement>(null);
 
@@ -54,6 +64,18 @@ export default function AdminPage() {
         const unsub = wsClient.onAny((data) =>
           addEntry("received", data.event)
         );
+
+        wsClient.on(4, (msg: WebSocketEvent) => {
+          if (!msg.data) return;
+          const { n, dominant, dist } = msg.data as {
+            n: number;
+            dominant: number;
+            dist: { v: number; f: number }[];
+          };
+          setCountLines((prev) =>
+            [{ n, dominant, dist, receivedAt: new Date().toLocaleTimeString() }, ...prev].slice(0, 50)
+          );
+        });
 
         return () => unsub();
       })
@@ -200,6 +222,88 @@ export default function AdminPage() {
           </div>
         </div>
       )}
+
+      {/* Count lines (event 4) */}
+      <div style={{ marginBottom: "20px" }}>
+        <h2 style={{ marginBottom: "8px", fontSize: "16px" }}>
+          Count lines (event 4)
+          <button
+            onClick={() => setCountLines([])}
+            style={{ marginLeft: "12px", fontSize: "12px", background: "#6b7280", padding: "2px 8px" }}
+          >
+            Clear
+          </button>
+        </h2>
+        {countLines.length === 0 ? (
+          <p style={{ color: "#6b7280", fontSize: "13px" }}>No data yet…</p>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ borderCollapse: "collapse", width: "100%", fontSize: "13px", fontFamily: "monospace" }}>
+              <thead>
+                <tr style={{ borderBottom: "1px solid #d1d5db", textAlign: "left" }}>
+                  <th style={{ padding: "4px 10px" }}>Time</th>
+                  <th style={{ padding: "4px 10px" }}>N</th>
+                  <th style={{ padding: "4px 10px" }}>Dominant</th>
+                  <th style={{ padding: "4px 10px" }}>Distribution</th>
+                </tr>
+              </thead>
+              <tbody>
+                {countLines.map((line, i) => (
+                  <tr key={i} style={{ borderBottom: "1px solid #f3f4f6" }}>
+                    <td style={{ padding: "4px 10px", color: "#6b7280" }}>{line.receivedAt}</td>
+                    <td style={{ padding: "4px 10px" }}>{line.n}</td>
+                    <td style={{ padding: "4px 10px", fontWeight: "bold" }}>{line.dominant}</td>
+                    <td style={{ padding: "4px 10px" }}>{line.dist.map((d) => `${d.v}×${d.f}`).join(", ")}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* ESP settings */}
+      <div style={{ marginBottom: "20px", padding: "16px", border: "1px solid #d1d5db", borderRadius: "8px", backgroundColor: "#f9fafb" }}>
+        <p style={{ margin: "0 0 12px 0", fontWeight: 600, fontSize: "14px" }}>ESP Settings (event 5)</p>
+        <div style={{ display: "flex", gap: "12px", alignItems: "flex-end", flexWrap: "wrap" }}>
+          <label style={{ display: "flex", flexDirection: "column", gap: "4px", fontSize: "13px" }}>
+            send_interval (ms)
+            <input
+              type="number"
+              min={100}
+              max={30000}
+              value={espSendInterval}
+              onChange={(e) => setEspSendInterval(e.target.value)}
+              disabled={!connected}
+              style={{ padding: "6px 10px", border: "1px solid #d1d5db", borderRadius: "6px", fontSize: "13px", width: "140px" }}
+            />
+          </label>
+          <label style={{ display: "flex", flexDirection: "column", gap: "4px", fontSize: "13px" }}>
+            poll_ms (ms)
+            <input
+              type="number"
+              min={10}
+              max={1000}
+              value={espPollMs}
+              onChange={(e) => setEspPollMs(e.target.value)}
+              disabled={!connected}
+              style={{ padding: "6px 10px", border: "1px solid #d1d5db", borderRadius: "6px", fontSize: "13px", width: "120px" }}
+            />
+          </label>
+          <button
+            disabled={!connected}
+            onClick={() => {
+              const si = parseInt(espSendInterval, 10);
+              const pm = parseInt(espPollMs, 10);
+              if (isNaN(si) || isNaN(pm) || !client?.isConnected()) return;
+              client.send(5, { send_interval: si, poll_ms: pm });
+              addEntry("sent", 5);
+            }}
+          >
+            Apply
+          </button>
+        </div>
+      </div>
 
       {/* Send controls */}
       <div style={{ marginBottom: "20px", display: "flex", gap: "8px", alignItems: "center" }}>

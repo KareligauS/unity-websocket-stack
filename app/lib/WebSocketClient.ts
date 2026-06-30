@@ -2,6 +2,8 @@
 export interface WebSocketEvent {
   type: "event";
   event: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  data?: Record<string, any>;
 }
 
 const getWebSocketUrl = (): string => {
@@ -78,9 +80,9 @@ export class WebSocketClient {
     }
   }
 
-  send(event: number): void {
+  send(event: number, data?: Record<string, unknown>): void {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      const message: WebSocketEvent = { type: "event", event };
+      const message: WebSocketEvent = { type: "event", event, ...(data ? { data } : {}) };
       this.ws.send(JSON.stringify(message));
     }
   }
