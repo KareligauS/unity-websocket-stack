@@ -149,6 +149,7 @@ static int readCount() {
   int n = 0;
   for (int i = 0; i < huskylens.countBlocks(); i++) {
     auto block = huskylens.getBlock(i);
+    block.
     if (block.ID == PERSON_ID || block.ID == CAT_ID || block.ID == DOG_ID) n++;
   }
   return n;
