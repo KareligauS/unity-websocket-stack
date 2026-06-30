@@ -24,8 +24,15 @@
 
 // ── WiFi / Server ─────────────────────────────────────────────────────────────
 
-#define WIFI_SSID     "kgserver2"
-#define WIFI_PASSWORD "holran344"
+struct WifiNetwork { const char* ssid; const char* password; };
+
+static const WifiNetwork WIFI_NETWORKS[] = {
+  { "kgserver2",   "holran344" },   // primary
+  { "kgserver2",  "holran344" },  // secondary — edit as needed
+};
+static const int          WIFI_NETWORK_COUNT      = sizeof(WIFI_NETWORKS) / sizeof(WIFI_NETWORKS[0]);
+static const unsigned long WIFI_CONNECT_TIMEOUT_MS = 10000UL;  // per-network attempt
+static const unsigned long WIFI_CHECK_INTERVAL_MS  = 5000UL;   // how often loop checks WiFi
 
 #define WS_HOST  "unity-websocket-stack.onrender.com"
 #define WS_PORT  443
@@ -41,6 +48,8 @@
 
 const int     MODE      = MODE_OBJECT;
 const uint8_t PERSON_ID = 1;  // HuskyLens ID of the trained "person" class
+const uint8_t DOG_ID    = 2;  // HuskyLens ID of the trained "dog" class
+const uint8_t CAT_ID    = 3;  // HuskyLens ID of the trained "cat" class
 
 // ── Timing ────────────────────────────────────────────────────────────────────
 
@@ -56,9 +65,11 @@ const int EVENT_DETECTION = 3;
 
 HUSKYLENS        huskylens;
 WebSocketsClient ws;
-bool             wsConnected = false;
-int              lastCount   = -1;
-uint32_t         reportN     = 0;
+bool             wsConnected    = false;
+int              lastCount      = -1;
+uint32_t         reportN        = 0;
+int              currentNetIdx  = 0;
+unsigned long    lastWifiCheck  = 0;
 
 uint8_t       countBuffer[BUFFER_SIZE];
 int           bufferLen  = 0;
@@ -103,7 +114,8 @@ static int readCount() {
 
   int n = 0;
   for (int i = 0; i < huskylens.countBlocks(); i++) {
-    if (huskylens.getBlock(i).ID == PERSON_ID) n++;
+    auto block = huskylens.getBlock(i);
+    if (block.ID == PERSON_ID || block.ID == CAT_ID || block.ID == DOG_ID) n++;
   }
   return n;
 }
@@ -139,6 +151,40 @@ void sendCount(int count) {
   }
 }
 
+// ── WiFi helpers ──────────────────────────────────────────────────────────────
+
+// Tries each network in round-robin order starting after the last known good
+// one. Returns true if connected, false if all networks timed out.
+bool connectWiFi() {
+  for (int attempt = 0; attempt < WIFI_NETWORK_COUNT; attempt++) {
+    int idx = (currentNetIdx + attempt) % WIFI_NETWORK_COUNT;
+    Serial.printf("[WiFi] trying \"%s\"...\n", WIFI_NETWORKS[idx].ssid);
+    WiFi.disconnect(true);
+    delay(100);
+    WiFi.begin(WIFI_NETWORKS[idx].ssid, WIFI_NETWORKS[idx].password);
+
+    unsigned long start = millis();
+    while (WiFi.status() != WL_CONNECTED) {
+      if (millis() - start >= WIFI_CONNECT_TIMEOUT_MS) break;
+      delay(500);
+      Serial.print(".");
+    }
+    Serial.println();
+
+    if (WiFi.status() == WL_CONNECTED) {
+      currentNetIdx = idx;
+      Serial.printf("[WiFi] connected to \"%s\" — IP: %s\n",
+        WIFI_NETWORKS[idx].ssid, WiFi.localIP().toString().c_str());
+      return true;
+    }
+    Serial.printf("[WiFi] \"%s\" failed, trying next\n", WIFI_NETWORKS[idx].ssid);
+    // advance so next attempt starts on the next network
+    currentNetIdx = (idx + 1) % WIFI_NETWORK_COUNT;
+  }
+  Serial.println("[WiFi] all networks unreachable");
+  return false;
+}
+
 // ── Setup / Loop ──────────────────────────────────────────────────────────────
 
 void setup() {
@@ -155,13 +201,10 @@ void setup() {
   );
   Serial.println(" ready");
 
-  Serial.printf("[WS] connecting to %s\n", WIFI_SSID);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
+  while (!connectWiFi()) {
+    Serial.println("[WiFi] retrying all networks in 5 s...");
+    delay(5000);
   }
-  Serial.printf("\n[WS] wifi up: %s\n", WiFi.localIP().toString().c_str());
 
   if (WS_TLS) {
     ws.beginSSL(WS_HOST, WS_PORT, WS_PATH);
@@ -173,9 +216,26 @@ void setup() {
 }
 
 void loop() {
-  ws.loop();
-
   unsigned long now = millis();
+
+  // Periodically check WiFi; on loss, try next network then let WS reconnect.
+  if (now - lastWifiCheck >= WIFI_CHECK_INTERVAL_MS) {
+    lastWifiCheck = now;
+    if (WiFi.status() != WL_CONNECTED) {
+      Serial.println("[WiFi] connection lost, reconnecting...");
+      wsConnected = false;
+      if (connectWiFi()) {
+        // Re-init WebSocket after WiFi is back
+        if (WS_TLS) {
+          ws.beginSSL(WS_HOST, WS_PORT, WS_PATH);
+        } else {
+          ws.begin(WS_HOST, WS_PORT, WS_PATH);
+        }
+      }
+    }
+  }
+
+  ws.loop();
 
   if (now - lastPollAt >= POLL_MS) {
     lastPollAt = now;

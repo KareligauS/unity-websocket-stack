@@ -20,6 +20,7 @@ export class WebSocketClient {
   private ws: WebSocket | null = null;
   private url: string;
   private listeners: Map<number, Set<(data: WebSocketEvent) => void>> = new Map();
+  private wildcardListeners: Set<(data: WebSocketEvent) => void> = new Set();
   private closeCallback: (() => void) | null = null;
 
   constructor(url?: string) {
@@ -44,6 +45,7 @@ export class WebSocketClient {
           try {
             const data: WebSocketEvent = JSON.parse(event.data);
             if (data.type === "event") {
+              this.wildcardListeners.forEach(cb => cb(data));
               const callbacks = this.listeners.get(data.event);
               if (callbacks) {
                 callbacks.forEach(callback => callback(data));
@@ -81,6 +83,13 @@ export class WebSocketClient {
       const message: WebSocketEvent = { type: "event", event };
       this.ws.send(JSON.stringify(message));
     }
+  }
+
+  onAny(callback: (data: WebSocketEvent) => void): () => void {
+    this.wildcardListeners.add(callback);
+    return () => {
+      this.wildcardListeners.delete(callback);
+    };
   }
 
   on(event: number, callback: (data: WebSocketEvent) => void): () => void {

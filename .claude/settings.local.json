@@ -4,7 +4,13 @@
       "Bash(pip install *)",
       "Bash(python -c \"import bridge; print\\('imports OK'\\)\")",
       "Bash(make help *)",
-      "Bash(python -c \"import serial_asyncio, websockets, dotenv; print\\('all imports OK'\\)\")"
+      "Bash(python -c \"import serial_asyncio, websockets, dotenv; print\\('all imports OK'\\)\")",
+      "Bash(mkdir -p /Users/kareligaus/Documents/unity-websocket-stack/app/app/admin /Users/kareligaus/Documents/unity-websocket-stack/app/app/client)",
+      "Bash(npm install *)",
+      "Bash(npx tsc *)"
+    ],
+    "additionalDirectories": [
+      "/Users/kareligaus/Documents/unity-websocket-stack/app/app"
     ]
   }
 }
