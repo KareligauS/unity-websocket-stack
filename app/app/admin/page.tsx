@@ -20,8 +20,9 @@ interface CountLine {
 }
 
 const TAB_MONITOR  = 0;
-const TAB_SETTINGS = 1;
-const TAB_SEND     = 2;
+const TAB_COUNT    = 1;
+const TAB_SETTINGS = 2;
+const TAB_SEND     = 3;
 
 export default function AdminPage() {
   const [authed, setAuthed] = useState(false);
@@ -227,6 +228,7 @@ export default function AdminPage() {
       {/* Tab bar */}
       <div style={{ display: "flex", borderBottom: "1px solid #d1d5db", marginBottom: "20px" }}>
         <button style={tabStyle(activeTab === TAB_MONITOR)}  onClick={() => setActiveTab(TAB_MONITOR)}>Monitor</button>
+        <button style={tabStyle(activeTab === TAB_COUNT)}    onClick={() => setActiveTab(TAB_COUNT)}>Count Lines</button>
         <button style={tabStyle(activeTab === TAB_SETTINGS)} onClick={() => setActiveTab(TAB_SETTINGS)}>ESP Settings</button>
         <button style={tabStyle(activeTab === TAB_SEND)}     onClick={() => setActiveTab(TAB_SEND)}>Send Event</button>
       </div>
@@ -275,44 +277,6 @@ export default function AdminPage() {
               </div>
             </div>
           )}
-
-          {/* Count lines (event 4) — collapsible */}
-          <div style={{ marginBottom: "20px" }}>
-            {sectionHeader(
-              `Count lines (event 4)`,
-              countLinesOpen,
-              () => setCountLinesOpen((v) => !v),
-              () => setCountLines([])
-            )}
-            {countLinesOpen && (
-              countLines.length === 0 ? (
-                <p style={{ color: "#6b7280", fontSize: "13px" }}>No data yet…</p>
-              ) : (
-                <div style={{ overflowX: "auto" }}>
-                  <table style={{ borderCollapse: "collapse", width: "100%", fontSize: "13px", fontFamily: "monospace" }}>
-                    <thead>
-                      <tr style={{ borderBottom: "1px solid #d1d5db", textAlign: "left" }}>
-                        <th style={{ padding: "4px 10px" }}>Time</th>
-                        <th style={{ padding: "4px 10px" }}>N</th>
-                        <th style={{ padding: "4px 10px" }}>Dominant</th>
-                        <th style={{ padding: "4px 10px" }}>Distribution</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {countLines.map((line, i) => (
-                        <tr key={i} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                          <td style={{ padding: "4px 10px", color: "#6b7280" }}>{line.receivedAt}</td>
-                          <td style={{ padding: "4px 10px" }}>{line.n}</td>
-                          <td style={{ padding: "4px 10px", fontWeight: "bold" }}>{line.dominant}</td>
-                          <td style={{ padding: "4px 10px" }}>{line.dist.map((d) => `${d.v}×${d.f}`).join(", ")}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )
-            )}
-          </div>
 
           {/* Event log — collapsible */}
           <div>
@@ -366,6 +330,46 @@ export default function AdminPage() {
             )}
           </div>
         </>
+      )}
+
+      {/* ── Tab 2: Count Lines ── */}
+      {activeTab === TAB_COUNT && (
+        <div>
+          {sectionHeader(
+            `Count lines (event 4)`,
+            countLinesOpen,
+            () => setCountLinesOpen((v) => !v),
+            () => setCountLines([])
+          )}
+          {countLinesOpen && (
+            countLines.length === 0 ? (
+              <p style={{ color: "#6b7280", fontSize: "13px" }}>No data yet…</p>
+            ) : (
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ borderCollapse: "collapse", width: "100%", fontSize: "13px", fontFamily: "monospace" }}>
+                  <thead>
+                    <tr style={{ borderBottom: "1px solid #d1d5db", textAlign: "left" }}>
+                      <th style={{ padding: "4px 10px" }}>Time</th>
+                      <th style={{ padding: "4px 10px" }}>N</th>
+                      <th style={{ padding: "4px 10px" }}>Dominant</th>
+                      <th style={{ padding: "4px 10px" }}>Distribution</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {countLines.map((line, i) => (
+                      <tr key={i} style={{ borderBottom: "1px solid #f3f4f6" }}>
+                        <td style={{ padding: "4px 10px", color: "#6b7280" }}>{line.receivedAt}</td>
+                        <td style={{ padding: "4px 10px" }}>{line.n}</td>
+                        <td style={{ padding: "4px 10px", fontWeight: "bold" }}>{line.dominant}</td>
+                        <td style={{ padding: "4px 10px" }}>{line.dist.map((d) => `${d.v}×${d.f}`).join(", ")}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )
+          )}
+        </div>
       )}
 
       {/* ── Tab 3: Send Event ── */}
