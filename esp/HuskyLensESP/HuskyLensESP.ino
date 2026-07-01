@@ -73,8 +73,8 @@ int              currentNetIdx  = 0;
 unsigned long    lastWifiCheck  = 0;
 
 // Runtime-adjustable timing settings (updated via event 5)
-unsigned long pollMs         = 50UL;
-unsigned long sendIntervalMs = 500UL;
+unsigned long pollMs         = 100UL;
+unsigned long sendIntervalMs = 1000UL;
 
 // Per-count weights (index 1–7); priority = freq * weight
 float countWeights[8] = {0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f};

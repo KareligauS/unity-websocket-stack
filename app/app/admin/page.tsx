@@ -34,9 +34,9 @@ export default function AdminPage() {
   const [connecting, setConnecting] = useState(true);
   const [log, setLog] = useState<LogEntry[]>([]);
   const [client, setClient] = useState<WebSocketClient | null>(null);
-  const [sendInput, setSendInput] = useState("");
-  const [espSendInterval, setEspSendInterval] = useState("500");
-  const [espPollMs, setEspPollMs] = useState("50");
+  const [visitorCount, setVisitorCount] = useState("");
+  const [espSendInterval, setEspSendInterval] = useState("1000");
+  const [espPollMs, setEspPollMs] = useState("100");
   const [countWeights, setCountWeights] = useState<string[]>(Array(7).fill("1.0"));
   const [countLines, setCountLines] = useState<CountLine[]>([]);
 
@@ -109,11 +109,17 @@ export default function AdminPage() {
     );
   };
 
-  const sendEvent = () => {
-    const id = parseInt(sendInput, 10);
-    if (isNaN(id) || !client?.isConnected()) return;
+  const sendSimpleEvent = (id: number) => {
+    if (!client?.isConnected()) return;
     client.send(id);
     addEntry("sent", id);
+  };
+
+  const sendVisitorCount = () => {
+    const count = parseInt(visitorCount, 10);
+    if (isNaN(count) || !client?.isConnected()) return;
+    client.send(3, { count });
+    addEntry("sent", 3);
   };
 
   const summary = log.reduce<Record<number, { sent: number; received: number }>>(
@@ -381,26 +387,104 @@ export default function AdminPage() {
 
       {/* ── Tab 3: Send Event ── */}
       {activeTab === TAB_SEND && (
-        <div style={{ padding: "16px", border: "1px solid #d1d5db", borderRadius: "8px", backgroundColor: "#f9fafb", maxWidth: "420px" }}>
-          <p style={{ margin: "0 0 16px 0", fontWeight: 600, fontSize: "14px" }}>Send Event</p>
-          <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-            <input
-              type="number"
-              min={0}
-              value={sendInput}
-              onChange={(e) => setSendInput(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") sendEvent(); }}
-              placeholder="Event ID"
-              disabled={!connected}
-              style={{
-                padding: "8px 12px",
-                border: "1px solid #d1d5db",
-                borderRadius: "6px",
-                fontSize: "14px",
-                width: "120px",
-              }}
-            />
-            <button onClick={sendEvent} disabled={!connected || sendInput === ""}>Send</button>
+        <div style={{ display: "flex", flexDirection: "column", gap: "20px", maxWidth: "480px" }}>
+          {/* Manual visitor counter */}
+          <div style={{ padding: "20px", border: "1px solid #d1d5db", borderRadius: "10px", backgroundColor: "#f9fafb" }}>
+            <p style={{ margin: "0 0 4px 0", fontWeight: 600, fontSize: "15px" }}>Manual Visitor Count</p>
+            <p style={{ margin: "0 0 16px 0", fontSize: "12px", color: "#6b7280" }}>
+              Nudge the visitor counter up or down by one.
+            </p>
+            <div style={{ display: "flex", gap: "12px" }}>
+              <button
+                onClick={() => sendSimpleEvent(1)}
+                disabled={!connected}
+                style={{
+                  flex: 1,
+                  display: "flex",
+                  alignItems: "baseline",
+                  justifyContent: "center",
+                  gap: "6px",
+                  padding: "14px",
+                  fontSize: "20px",
+                  fontWeight: 700,
+                  color: "#fff",
+                  backgroundColor: "#16a34a",
+                  border: "none",
+                  borderRadius: "8px",
+                  cursor: connected ? "pointer" : "not-allowed",
+                  opacity: connected ? 1 : 0.5,
+                }}
+              >
+                +1
+                <span style={{ fontSize: "11px", fontWeight: 400, opacity: 0.85 }}>event 1</span>
+              </button>
+              <button
+                onClick={() => sendSimpleEvent(2)}
+                disabled={!connected}
+                style={{
+                  flex: 1,
+                  display: "flex",
+                  alignItems: "baseline",
+                  justifyContent: "center",
+                  gap: "6px",
+                  padding: "14px",
+                  fontSize: "20px",
+                  fontWeight: 700,
+                  color: "#fff",
+                  backgroundColor: "#dc2626",
+                  border: "none",
+                  borderRadius: "8px",
+                  cursor: connected ? "pointer" : "not-allowed",
+                  opacity: connected ? 1 : 0.5,
+                }}
+              >
+                −1
+                <span style={{ fontSize: "11px", fontWeight: 400, opacity: 0.85 }}>event 2</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Send absolute visitor count */}
+          <div style={{ padding: "20px", border: "1px solid #d1d5db", borderRadius: "10px", backgroundColor: "#f9fafb" }}>
+            <p style={{ margin: "0 0 4px 0", fontWeight: 600, fontSize: "15px" }}>Send Visitor Count</p>
+            <p style={{ margin: "0 0 16px 0", fontSize: "12px", color: "#6b7280" }}>
+              Push an absolute visitor count to Unity.
+            </p>
+            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+              <input
+                type="number"
+                min={0}
+                value={visitorCount}
+                onChange={(e) => setVisitorCount(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") sendVisitorCount(); }}
+                placeholder="Count"
+                disabled={!connected}
+                style={{
+                  padding: "10px 12px",
+                  border: "1px solid #d1d5db",
+                  borderRadius: "6px",
+                  fontSize: "14px",
+                  width: "140px",
+                }}
+              />
+              <button
+                onClick={sendVisitorCount}
+                disabled={!connected || visitorCount === ""}
+                style={{
+                  padding: "10px 22px",
+                  fontSize: "14px",
+                  fontWeight: 600,
+                  color: "#fff",
+                  backgroundColor: "#2563eb",
+                  border: "none",
+                  borderRadius: "6px",
+                  cursor: connected && visitorCount !== "" ? "pointer" : "not-allowed",
+                  opacity: connected && visitorCount !== "" ? 1 : 0.5,
+                }}
+              >
+                Send <span style={{ fontSize: "11px", fontWeight: 400, opacity: 0.85 }}>(event 3)</span>
+              </button>
+            </div>
           </div>
         </div>
       )}
