@@ -50,6 +50,7 @@ const int     MODE      = MODE_OBJECT;
 const uint8_t PERSON_ID = 1;  // HuskyLens ID of the trained "person" class
 const uint8_t DOG_ID    = 2;  // HuskyLens ID of the trained "dog" class
 const uint8_t CAT_ID    = 3;  // HuskyLens ID of the trained "cat" class
+const uint8_t BIRD_ID   = 4;  // HuskyLens ID of the trained "other" class
 
 // ── Timing ────────────────────────────────────────────────────────────────────
 
@@ -75,6 +76,9 @@ unsigned long    lastWifiCheck  = 0;
 unsigned long pollMs         = 50UL;
 unsigned long sendIntervalMs = 500UL;
 
+// Per-count weights (index 1–7); priority = freq * weight
+float countWeights[8] = {0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f};
+
 uint8_t       countBuffer[MAX_BUFFER_SIZE];
 int           bufferLen  = 0;
 unsigned long lastPollAt = 0;
@@ -83,6 +87,17 @@ unsigned long lastSendAt = 0;
 // ── WebSocket event handler ───────────────────────────────────────────────────
 
 // Extract an integer value for "key": N from a JSON string.
+static float jsonGetFloat(const char* json, const char* key) {
+  char search[40];
+  snprintf(search, sizeof(search), "\"%s\"", key);
+  const char* p = strstr(json, search);
+  if (!p) return -1.0f;
+  p = strchr(p + strlen(search), ':');
+  if (!p) return -1.0f;
+  while (*p == ':' || *p == ' ') p++;
+  return atof(p);
+}
+
 static long jsonGetInt(const char* json, const char* key) {
   char search[40];
   snprintf(search, sizeof(search), "\"%s\"", key);
@@ -118,6 +133,15 @@ void onWsEvent(WStype_t type, uint8_t* payload, size_t length) {
           pollMs = (unsigned long)newPollMs;
           Serial.printf("[CFG] poll_ms → %lu ms\n", pollMs);
         }
+        for (int i = 1; i <= 7; i++) {
+          char key[4];
+          snprintf(key, sizeof(key), "w%d", i);
+          float w = jsonGetFloat(json, key);
+          if (w >= 0.0f) {
+            countWeights[i] = w;
+            Serial.printf("[CFG] w%d → %.2f\n", i, w);
+          }
+        }
         bufferLen = 0;  // discard partial buffer after settings change
       }
       break;
@@ -129,17 +153,23 @@ void onWsEvent(WStype_t type, uint8_t* payload, size_t length) {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-// Returns the most frequent non-zero value, or 0 if all entries are zero.
-static int mostFrequentNonZero(const uint8_t* buf, int len) {
+// Returns the highest-priority non-zero count (priority = freq * weight).
+// Writes the winning priority into *outPriority if non-null.
+static int mostFrequentNonZero(const uint8_t* buf, int len, float* outPriority = nullptr) {
   uint8_t freq[16] = {};
   for (int i = 0; i < len; i++) {
     if (buf[i] > 0) freq[buf[i] < 16 ? buf[i] : 15]++;
   }
-  int best = 1;
-  for (int i = 2; i < 16; i++) {
-    if (freq[i] > freq[best]) best = i;
+  int   best         = 0;
+  float bestPriority = 0.0f;
+  for (int i = 1; i < 16; i++) {
+    if (freq[i] == 0) continue;
+    float w        = (i <= 7) ? countWeights[i] : 1.0f;
+    float priority = freq[i] * w;
+    if (priority > bestPriority) { bestPriority = priority; best = i; }
   }
-  return freq[best] > 0 ? best : 0;
+  if (outPriority) *outPriority = bestPriority;
+  return best;
 }
 
 static int readCount() {
@@ -149,31 +179,31 @@ static int readCount() {
   int n = 0;
   for (int i = 0; i < huskylens.countBlocks(); i++) {
     auto block = huskylens.getBlock(i);
-    block.
-    if (block.ID == PERSON_ID || block.ID == CAT_ID || block.ID == DOG_ID) n++;
+    if (block.ID == PERSON_ID || block.ID == CAT_ID || block.ID == DOG_ID || block.ID == BIRD_ID) n++;
   }
   return n;
 }
 
-void printBuffer(const uint8_t* buf, int len, int dominant) {
+void printBuffer(const uint8_t* buf, int len, int dominant, float priority) {
   uint8_t freq[16] = {};
   for (int i = 0; i < len; i++) {
     uint8_t v = buf[i] < 16 ? buf[i] : 15;
     freq[v]++;
   }
   Serial.printf("[N=%u] ", reportN);
-  Serial.printf("%d  ←  ", dominant);
+  Serial.printf("%d [priority=%.2f]  ←  ", dominant, priority);
   bool first = true;
   for (int i = 0; i < 16; i++) {
     if (freq[i] == 0) continue;
     if (!first) Serial.print(", ");
-    Serial.printf("%d-%d", i, freq[i]);
+    float w = (i >= 1 && i <= 7) ? countWeights[i] : 1.0f;
+    Serial.printf("%d×%d(%.2f)", i, freq[i], freq[i] * w);
     first = false;
   }
   Serial.println();
 }
 
-void sendCountLine(uint32_t n, int dominant, const uint8_t* buf, int len) {
+void sendCountLine(uint32_t n, int dominant, float priority, const uint8_t* buf, int len) {
   uint8_t freq[16] = {};
   for (int i = 0; i < len; i++) {
     uint8_t v = buf[i] < 16 ? buf[i] : 15;
@@ -195,8 +225,8 @@ void sendCountLine(uint32_t n, int dominant, const uint8_t* buf, int len) {
 
   char buf2[256];
   snprintf(buf2, sizeof(buf2),
-    "{\"type\":\"event\",\"event\":%d,\"data\":{\"n\":%u,\"dominant\":%d,\"dist\":%s}}",
-    EVENT_COUNT_LINE, n, dominant, dist);
+    "{\"type\":\"event\",\"event\":%d,\"data\":{\"n\":%u,\"dominant\":%d,\"priority\":%.2f,\"dist\":%s}}",
+    EVENT_COUNT_LINE, n, dominant, priority, dist);
   if (wsConnected) {
     ws.sendTXT(buf2);
   }
@@ -313,9 +343,10 @@ void loop() {
   if (now - lastSendAt >= sendIntervalMs && bufferLen > 0) {
     lastSendAt = now;
     reportN++;
-    int dominant = mostFrequentNonZero(countBuffer, bufferLen);
-    printBuffer(countBuffer, bufferLen, dominant);
-    sendCountLine(reportN, dominant, countBuffer, bufferLen);
+    float dominantPriority = 0.0f;
+    int dominant = mostFrequentNonZero(countBuffer, bufferLen, &dominantPriority);
+    printBuffer(countBuffer, bufferLen, dominant, dominantPriority);
+    sendCountLine(reportN, dominant, dominantPriority, countBuffer, bufferLen);
     bufferLen = 0;
     if (dominant != lastCount) {
       sendCount(dominant);

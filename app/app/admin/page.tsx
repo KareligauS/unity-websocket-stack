@@ -15,6 +15,7 @@ interface LogEntry {
 interface CountLine {
   n: number;
   dominant: number;
+  priority?: number;
   dist: { v: number; f: number }[];
   receivedAt: string;
 }
@@ -36,6 +37,7 @@ export default function AdminPage() {
   const [sendInput, setSendInput] = useState("");
   const [espSendInterval, setEspSendInterval] = useState("500");
   const [espPollMs, setEspPollMs] = useState("50");
+  const [countWeights, setCountWeights] = useState<string[]>(Array(7).fill("1.0"));
   const [countLines, setCountLines] = useState<CountLine[]>([]);
 
   const [activeTab, setActiveTab] = useState(TAB_MONITOR);
@@ -74,13 +76,14 @@ export default function AdminPage() {
 
         wsClient.on(4, (msg: WebSocketEvent) => {
           if (!msg.data) return;
-          const { n, dominant, dist } = msg.data as {
+          const { n, dominant, priority, dist } = msg.data as {
             n: number;
             dominant: number;
+            priority?: number;
             dist: { v: number; f: number }[];
           };
           setCountLines((prev) =>
-            [{ n, dominant, dist, receivedAt: new Date().toLocaleTimeString() }, ...prev].slice(0, 10)
+            [{ n, dominant, priority, dist, receivedAt: new Date().toLocaleTimeString() }, ...prev].slice(0, 10)
           );
         });
 
@@ -352,6 +355,7 @@ export default function AdminPage() {
                       <th style={{ padding: "4px 10px" }}>Time</th>
                       <th style={{ padding: "4px 10px" }}>N</th>
                       <th style={{ padding: "4px 10px" }}>Dominant</th>
+                      <th style={{ padding: "4px 10px" }}>Priority</th>
                       <th style={{ padding: "4px 10px" }}>Distribution</th>
                     </tr>
                   </thead>
@@ -361,6 +365,9 @@ export default function AdminPage() {
                         <td style={{ padding: "4px 10px", color: "#6b7280" }}>{line.receivedAt}</td>
                         <td style={{ padding: "4px 10px" }}>{line.n}</td>
                         <td style={{ padding: "4px 10px", fontWeight: "bold" }}>{line.dominant}</td>
+                        <td style={{ padding: "4px 10px", color: "#7c3aed" }}>
+                          {line.priority !== undefined ? line.priority.toFixed(2) : "—"}
+                        </td>
                         <td style={{ padding: "4px 10px" }}>{line.dist.map((d) => `${d.v}×${d.f}`).join(", ")}</td>
                       </tr>
                     ))}
@@ -398,9 +405,9 @@ export default function AdminPage() {
         </div>
       )}
 
-      {/* ── Tab 2: ESP Settings ── */}
+      {/* ── Tab 3: ESP Settings ── */}
       {activeTab === TAB_SETTINGS && (
-        <div style={{ padding: "16px", border: "1px solid #d1d5db", borderRadius: "8px", backgroundColor: "#f9fafb", maxWidth: "420px" }}>
+        <div style={{ padding: "16px", border: "1px solid #d1d5db", borderRadius: "8px", backgroundColor: "#f9fafb", maxWidth: "520px" }}>
           <p style={{ margin: "0 0 16px 0", fontWeight: 600, fontSize: "14px" }}>ESP Settings — event 5</p>
           <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
             <label style={{ display: "flex", flexDirection: "column", gap: "4px", fontSize: "13px" }}>
@@ -427,6 +434,31 @@ export default function AdminPage() {
                 style={{ padding: "6px 10px", border: "1px solid #d1d5db", borderRadius: "6px", fontSize: "13px", width: "160px" }}
               />
             </label>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px", fontSize: "13px" }}>
+              <span style={{ fontWeight: 500 }}>Count weights (priority = freq × weight)</span>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "8px" }}>
+                {countWeights.map((w, i) => (
+                  <label key={i} style={{ display: "flex", flexDirection: "column", gap: "3px", fontSize: "12px" }}>
+                    Count {i + 1}
+                    <input
+                      type="number"
+                      min={0}
+                      step={0.1}
+                      value={w}
+                      onChange={(e) => setCountWeights((prev) => {
+                        const next = [...prev];
+                        next[i] = e.target.value;
+                        return next;
+                      })}
+                      disabled={!connected}
+                      style={{ padding: "4px 8px", border: "1px solid #d1d5db", borderRadius: "6px", fontSize: "12px", width: "100%" }}
+                    />
+                  </label>
+                ))}
+              </div>
+            </div>
+
             <button
               disabled={!connected}
               style={{ alignSelf: "flex-start" }}
@@ -434,7 +466,12 @@ export default function AdminPage() {
                 const si = parseInt(espSendInterval, 10);
                 const pm = parseInt(espPollMs, 10);
                 if (isNaN(si) || isNaN(pm) || !client?.isConnected()) return;
-                client.send(5, { send_interval: si, poll_ms: pm });
+                const weights: Record<string, number> = {};
+                countWeights.forEach((w, i) => {
+                  const val = parseFloat(w);
+                  if (!isNaN(val)) weights[`w${i + 1}`] = val;
+                });
+                client.send(5, { send_interval: si, poll_ms: pm, ...weights });
                 addEntry("sent", 5);
               }}
             >
