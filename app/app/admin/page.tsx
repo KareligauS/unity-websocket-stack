@@ -2,6 +2,12 @@
 
 import { useEffect, useRef, useState } from "react";
 import { WebSocketClient, WebSocketEvent } from "@/lib/WebSocketClient";
+import { getCookie, setCookie } from "@/lib/cookies";
+
+const COOKIE_PASSKEY       = "admin_passkey";
+const COOKIE_SEND_INTERVAL = "esp_send_interval";
+const COOKIE_POLL_MS       = "esp_poll_ms";
+const COOKIE_COUNT_WEIGHTS = "esp_count_weights";
 
 type EventDirection = "sent" | "received";
 
@@ -47,17 +53,50 @@ export default function AdminPage() {
   const counterRef = useRef(0);
   const logRef = useRef<HTMLDivElement>(null);
 
-  const handleLogin = (e: React.FormEvent) => {
-    e.preventDefault();
+  const tryLogin = (pw: string): boolean => {
     const expected = process.env.NEXT_PUBLIC_ADMIN_PASSWORD;
-    if (!expected || passwordInput === expected) {
+    if (!expected || pw === expected) {
       setAuthed(true);
       setPasswordError(false);
-    } else {
+      setCookie(COOKIE_PASSKEY, pw);
+      return true;
+    }
+    return false;
+  };
+
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!tryLogin(passwordInput)) {
       setPasswordError(true);
       setPasswordInput("");
     }
   };
+
+  // Restore saved passkey and ESP settings from cookies on first load.
+  useEffect(() => {
+    const savedPasskey = getCookie(COOKIE_PASSKEY);
+    if (savedPasskey) {
+      setPasswordInput(savedPasskey);
+      tryLogin(savedPasskey);
+    }
+
+    const savedSendInterval = getCookie(COOKIE_SEND_INTERVAL);
+    if (savedSendInterval) setEspSendInterval(savedSendInterval);
+
+    const savedPollMs = getCookie(COOKIE_POLL_MS);
+    if (savedPollMs) setEspPollMs(savedPollMs);
+
+    const savedWeights = getCookie(COOKIE_COUNT_WEIGHTS);
+    if (savedWeights) {
+      try {
+        const parsed = JSON.parse(savedWeights);
+        if (Array.isArray(parsed) && parsed.length === 7) setCountWeights(parsed);
+      } catch {
+        // ignore malformed cookie
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (!authed) return;
@@ -557,6 +596,10 @@ export default function AdminPage() {
                 });
                 client.send(5, { send_interval: si, poll_ms: pm, ...weights });
                 addEntry("sent", 5);
+
+                setCookie(COOKIE_SEND_INTERVAL, espSendInterval);
+                setCookie(COOKIE_POLL_MS, espPollMs);
+                setCookie(COOKIE_COUNT_WEIGHTS, JSON.stringify(countWeights));
               }}
             >
               Apply
